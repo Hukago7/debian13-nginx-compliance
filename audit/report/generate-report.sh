@@ -157,7 +157,7 @@ cat > "$OUTPUT" <<EOF
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
-<title>Compliance Dashboard - $HOST</title>
+<title>DNC - $HOST</title>
 
 <style>
 
@@ -580,7 +580,7 @@ pre {
 <aside class="sidebar">
 
 <div class="brand">
-    Compliance<span>Lab</span>
+    DebianNginx<span>Compliance</span>
 </div>
 
 <div class="nav">
@@ -610,7 +610,7 @@ pre {
 
 <div class="title">
 <h1>Debian 13 / Nginx Compliance</h1>
-<p>Security & compliance assessment</p>
+<p>Repository by Hukago</p>
 </div>
 
 <div class="server">
