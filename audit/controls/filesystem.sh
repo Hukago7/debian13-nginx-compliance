@@ -4,99 +4,180 @@ echo
 echo "========== STOCKAGE / PERMISSIONS =========="
 echo
 
+# ==========================================================
 # 21 - CM-6 - Partitionnement
-PARTITIONS="$(lsblk -o NAME,FSTYPE,SIZE,MOUNTPOINTS 2>/dev/null)"
+# ==========================================================
+# Une partition racine doit exister et être montée.
 
-if [ -n "$PARTITIONS" ]; then
-    manual "21 | CM-6 | Partitionnement détecté : validation nécessaire"
+ROOT_SOURCE="$(findmnt -n -o SOURCE / 2>/dev/null)"
+
+if [ -n "$ROOT_SOURCE" ]; then
+    pass "21 | CM-6 | Système racine monté depuis : $ROOT_SOURCE"
 else
-    fail "21 | CM-6 | Impossible d'obtenir le partitionnement"
+    fail "21 | CM-6 | Impossible d'identifier le stockage de /"
 fi
 
 
-# 22 - CM-7 - Systèmes de fichiers
-FILESYSTEMS="$(findmnt -rn -o FSTYPE 2>/dev/null | sort -u | xargs)"
+# ==========================================================
+# 22 - CM-7 - Filesystems interdits
+# ==========================================================
 
-if [ -n "$FILESYSTEMS" ]; then
-    manual "22 | CM-7 | Systèmes de fichiers : $FILESYSTEMS"
-else
-    fail "22 | CM-7 | Impossible d'identifier les systèmes de fichiers"
-fi
+BAD_FS=""
 
+for fs in $FORBIDDEN_FILESYSTEMS; do
 
-# 23 - CM-6 - Options de montage
-MOUNTS="$(findmnt -rn -o TARGET,OPTIONS 2>/dev/null)"
+    if grep -qw "$fs" /proc/filesystems 2>/dev/null ||
+       findmnt -rn -t "$fs" >/dev/null 2>&1; then
 
-if [ -n "$MOUNTS" ]; then
-    manual "23 | CM-6 | Options de montage récupérées : validation nécessaire"
-else
-    fail "23 | CM-6 | Impossible de récupérer les options de montage"
-fi
-
-
-# 24 - AU-4 - Espace disque
-ROOT_USAGE="$(df -P / 2>/dev/null | awk 'NR==2 {gsub("%","",$5); print $5}')"
-
-if [[ "$ROOT_USAGE" =~ ^[0-9]+$ ]]; then
-    if [ "$ROOT_USAGE" -lt 90 ]; then
-        pass "24 | AU-4 | Utilisation de / : ${ROOT_USAGE}%"
-    else
-        fail "24 | AU-4 | Espace disque critique : ${ROOT_USAGE}%"
-    fi
-else
-    fail "24 | AU-4 | Impossible de déterminer l'utilisation disque"
-fi
-
-
-# 25 - AU-4 - /var/log : espace et inodes
-if [ -d /var/log ]; then
-
-    LOG_USAGE="$(df -P /var/log 2>/dev/null | awk 'NR==2 {gsub("%","",$5); print $5}')"
-    LOG_INODES="$(df -Pi /var/log 2>/dev/null | awk 'NR==2 {gsub("%","",$5); print $5}')"
-
-    if [[ "$LOG_USAGE" =~ ^[0-9]+$ ]] &&
-       [[ "$LOG_INODES" =~ ^[0-9]+$ ]] &&
-       [ "$LOG_USAGE" -lt 90 ] &&
-       [ "$LOG_INODES" -lt 90 ]; then
-
-        pass "25 | AU-4 | /var/log : disque ${LOG_USAGE}% / inodes ${LOG_INODES}%"
-
-    else
-        fail "25 | AU-4 | /var/log proche de la saturation"
+        BAD_FS="$BAD_FS $fs"
     fi
 
+done
+
+if [ -z "$BAD_FS" ]; then
+    pass "22 | CM-7 | Aucun filesystem interdit détecté"
 else
-    fail "25 | AU-4 | /var/log absent"
+    fail "22 | CM-7 | Filesystems interdits disponibles/utilisés :$BAD_FS"
 fi
 
 
-# 26 - AC-6 - Permissions configuration Nginx
-if [ -d /etc/nginx ]; then
+# ==========================================================
+# 23 - CM-6 - Options de montage sécurisées
+# ==========================================================
 
-    BAD_NGINX_CONFIG="$(
-        find /etc/nginx -xdev \
+check_mount_options() {
+
+    TARGET="$1"
+    REQUIRED="$2"
+
+    if ! findmnt "$TARGET" >/dev/null 2>&1; then
+        return 1
+    fi
+
+    OPTIONS="$(findmnt -n -o OPTIONS "$TARGET" 2>/dev/null)"
+
+    MISSING=""
+
+    for option in $REQUIRED; do
+        if ! echo ",$OPTIONS," | grep -q ",$option,"; then
+            MISSING="$MISSING $option"
+        fi
+    done
+
+    if [ -z "$MISSING" ]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+MOUNT_ERROR=""
+
+if ! check_mount_options "/tmp" "$TMP_REQUIRED_OPTIONS"; then
+    MOUNT_ERROR="$MOUNT_ERROR /tmp"
+fi
+
+if ! check_mount_options "/dev/shm" "$DEVSHM_REQUIRED_OPTIONS"; then
+    MOUNT_ERROR="$MOUNT_ERROR /dev/shm"
+fi
+
+if [ -z "$MOUNT_ERROR" ]; then
+    pass "23 | CM-6 | Options de montage sécurisées conformes"
+else
+    fail "23 | CM-6 | Options de montage non conformes :$MOUNT_ERROR"
+fi
+
+
+# ==========================================================
+# 24 - AU-4 - Utilisation disque
+# ==========================================================
+
+ROOT_USAGE="$(
+    df -P / 2>/dev/null |
+    awk 'NR==2 {gsub("%","",$5); print $5}'
+)"
+
+if [[ "$ROOT_USAGE" =~ ^[0-9]+$ ]] &&
+   [ "$ROOT_USAGE" -lt "$MAX_DISK_USAGE" ]; then
+
+    pass "24 | AU-4 | Utilisation disque conforme : ${ROOT_USAGE}%"
+else
+    fail "24 | AU-4 | Utilisation disque : ${ROOT_USAGE}% (limite : ${MAX_DISK_USAGE}%)"
+fi
+
+
+# ==========================================================
+# 25 - AU-4 - /var/log
+# ==========================================================
+
+LOG_USAGE="$(
+    df -P /var/log 2>/dev/null |
+    awk 'NR==2 {gsub("%","",$5); print $5}'
+)"
+
+LOG_INODES="$(
+    df -Pi /var/log 2>/dev/null |
+    awk 'NR==2 {gsub("%","",$5); print $5}'
+)"
+
+if [[ "$LOG_USAGE" =~ ^[0-9]+$ ]] &&
+   [[ "$LOG_INODES" =~ ^[0-9]+$ ]] &&
+   [ "$LOG_USAGE" -lt "$MAX_DISK_USAGE" ] &&
+   [ "$LOG_INODES" -lt "$MAX_INODE_USAGE" ]; then
+
+    pass "25 | AU-4 | /var/log : disque ${LOG_USAGE}% / inodes ${LOG_INODES}%"
+else
+    fail "25 | AU-4 | /var/log non conforme : disque=${LOG_USAGE}% inodes=${LOG_INODES}%"
+fi
+
+
+# ==========================================================
+# 26 - AC-6 - Permissions /etc/nginx
+# ==========================================================
+
+if [ ! -d "$NGINX_CONFIG_DIR" ]; then
+    fail "26 | AC-6 | $NGINX_CONFIG_DIR absent"
+else
+
+    BAD_NGINX_PERMS="$(
+        find "$NGINX_CONFIG_DIR" -xdev \
         \( -type f -o -type d \) \
-        -perm /002 2>/dev/null | head -n 1
+        -perm /022 \
+        -print 2>/dev/null |
+        head -n1
     )"
 
-    if [ -z "$BAD_NGINX_CONFIG" ]; then
-        pass "26 | AC-6 | Aucun fichier Nginx world-writable"
-    else
-        fail "26 | AC-6 | Permission dangereuse : $BAD_NGINX_CONFIG"
-    fi
+    BAD_NGINX_OWNER="$(
+        find "$NGINX_CONFIG_DIR" -xdev \
+        ! -user root \
+        -print 2>/dev/null |
+        head -n1
+    )"
 
-else
-    fail "26 | AC-6 | /etc/nginx absent"
+    if [ -z "$BAD_NGINX_PERMS" ] &&
+       [ -z "$BAD_NGINX_OWNER" ]; then
+
+        pass "26 | AC-6 | Configuration Nginx protégée et détenue par root"
+    else
+        fail "26 | AC-6 | Permissions/propriétaire incorrects dans $NGINX_CONFIG_DIR"
+    fi
 fi
 
 
+# ==========================================================
 # 27 - AC-6 - Permissions contenu Web
-if [ -d /var/www ]; then
+# ==========================================================
+
+if [ ! -d "$WEB_ROOT" ]; then
+    fail "27 | AC-6 | $WEB_ROOT absent"
+else
 
     BAD_WEB="$(
-        find /var/www -xdev \
+        find "$WEB_ROOT" -xdev \
         \( -type f -o -type d \) \
-        -perm /002 2>/dev/null | head -n 1
+        -perm /002 \
+        -print 2>/dev/null |
+        head -n1
     )"
 
     if [ -z "$BAD_WEB" ]; then
@@ -104,76 +185,117 @@ if [ -d /var/www ]; then
     else
         fail "27 | AC-6 | Contenu Web world-writable : $BAD_WEB"
     fi
-
-else
-    fail "27 | AC-6 | /var/www absent"
 fi
 
 
+# ==========================================================
 # 28 - SC-12 - Permissions clés privées TLS
-KEYS="$(
-    find /etc/nginx /etc/ssl/private \
-    -type f \
-    \( -name "*.key" -o -name "*.pem" \) \
-    2>/dev/null
-)"
+# ==========================================================
+
+KEYS=""
+
+if command -v nginx >/dev/null 2>&1; then
+    KEYS="$(
+        nginx -T 2>/dev/null |
+        awk '
+            $1 == "ssl_certificate_key" {
+                gsub(";", "", $2)
+                print $2
+            }
+        ' |
+        sort -u
+    )"
+fi
 
 if [ -z "$KEYS" ]; then
-    manual "28 | SC-12 | Aucune clé TLS identifiée automatiquement"
+
+    fail "28 | SC-12 | Aucune clé privée TLS Nginx détectée"
+
 else
 
-    BAD_KEY=0
+    BAD_KEYS=""
 
     while IFS= read -r key; do
-        PERM="$(stat -c '%a' "$key" 2>/dev/null)"
 
-        # Aucun droit pour "others".
-        OTHER="${PERM: -1}"
+        [ -z "$key" ] && continue
 
-        if [ "$OTHER" != "0" ]; then
-            BAD_KEY=1
-            break
+        if [ ! -f "$key" ]; then
+            BAD_KEYS="$BAD_KEYS $key(absente)"
+            continue
         fi
+
+        MODE="$(stat -c '%a' "$key" 2>/dev/null)"
+        OWNER="$(stat -c '%U' "$key" 2>/dev/null)"
+
+        # On refuse tout accès pour "others".
+        OTHER="${MODE: -1}"
+
+        if [ "$OWNER" != "root" ] ||
+           [ "$OTHER" != "0" ]; then
+            BAD_KEYS="$BAD_KEYS $key"
+        fi
+
     done <<< "$KEYS"
 
-    if [ "$BAD_KEY" -eq 0 ]; then
-        pass "28 | SC-12 | Clés TLS non accessibles aux autres utilisateurs"
+    if [ -z "$BAD_KEYS" ]; then
+        pass "28 | SC-12 | Permissions des clés privées TLS conformes"
     else
-        fail "28 | SC-12 | Clé TLS avec permissions trop permissives : $key"
+        fail "28 | SC-12 | Clés privées TLS non conformes :$BAD_KEYS"
     fi
 fi
 
 
+# ==========================================================
 # 29 - AC-6 - Propriétaires contenu Web
-if [ -d /var/www ]; then
+# ==========================================================
 
-    BAD_OWNER="$(
-        find /var/www -xdev \
-        ! -user root \
-        ! -user www-data \
-        -print 2>/dev/null | head -n 1
-    )"
+if [ ! -d "$WEB_ROOT" ]; then
+
+    fail "29 | AC-6 | $WEB_ROOT absent"
+
+else
+
+    BAD_OWNER=""
+
+    while IFS= read -r owner; do
+
+        [ -z "$owner" ] && continue
+
+        case " $WEB_ALLOWED_OWNERS " in
+            *" $owner "*) ;;
+            *) BAD_OWNER="$BAD_OWNER $owner" ;;
+        esac
+
+    done < <(
+        find "$WEB_ROOT" -xdev \
+        -printf '%u\n' 2>/dev/null |
+        sort -u
+    )
 
     if [ -z "$BAD_OWNER" ]; then
         pass "29 | AC-6 | Propriétaires du contenu Web conformes"
     else
-        manual "29 | AC-6 | Propriétaire à valider : $BAD_OWNER"
+        fail "29 | AC-6 | Propriétaires Web non autorisés :$BAD_OWNER"
     fi
-
-else
-    fail "29 | AC-6 | /var/www absent"
 fi
 
 
-# 30 - CM-6 - Montages persistants
-if [ -f /etc/fstab ]; then
+# ==========================================================
+# 30 - CM-6 - /etc/fstab
+# ==========================================================
 
-    if findmnt --verify --tab-file /etc/fstab >/dev/null 2>&1; then
-        pass "30 | CM-6 | /etc/fstab valide"
-    else
-        fail "30 | CM-6 | Erreur détectée dans /etc/fstab"
-    fi
+if [ ! -f /etc/fstab ]; then
+
+    fail "30 | CM-6 | /etc/fstab absent"
+
+elif ! command -v findmnt >/dev/null 2>&1; then
+
+    fail "30 | CM-6 | findmnt indisponible"
+
+elif findmnt --verify --tab-file /etc/fstab >/dev/null 2>&1; then
+
+    pass "30 | CM-6 | Configuration /etc/fstab valide"
 
 else
-    fail "30 | CM-6 | /etc/fstab absent"
+    fail "30 | CM-6 | Erreur détectée dans /etc/fstab"
 fi

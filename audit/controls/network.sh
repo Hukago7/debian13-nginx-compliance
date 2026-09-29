@@ -8,102 +8,188 @@ echo
 INTERFACES="$(ip -o link show 2>/dev/null | awk -F': ' '$2 != "lo" {print $2}' | xargs)"
 
 if [ -n "$INTERFACES" ]; then
-    manual "11 | CM-8 | Interfaces détectées : $INTERFACES"
+    pass "11 | CM-8 | Interfaces réseau détectées : $INTERFACES"
 else
-    fail "11 | CM-8 | Impossible d'inventorier les interfaces réseau"
+    fail "11 | CM-8 | Aucune interface réseau hors loopback détectée"
 fi
 
 
-# 12 - CM-8 - Adressage IPv4 / IPv6
-ADDRESSES="$(ip -br addr show 2>/dev/null | grep -v '^lo' | xargs)"
+# 12 - CM-8 - Adressage IP
+ADDRESSES="$(
+    ip -o -4 addr show scope global 2>/dev/null |
+    awk '{print $4}' |
+    xargs
+)"
 
 if [ -n "$ADDRESSES" ]; then
-    manual "12 | CM-8 | Adressage détecté : $ADDRESSES"
+    pass "12 | CM-8 | Adresses IPv4 configurées : $ADDRESSES"
 else
-    fail "12 | CM-8 | Aucune adresse réseau détectée"
+    fail "12 | CM-8 | Aucune adresse IPv4 globale détectée"
 fi
 
 
-# 13 - CM-6 - Passerelle par défaut
+# 13 - CM-6 - Passerelle
 GATEWAY="$(ip route show default 2>/dev/null | head -n1)"
 
 if [ -n "$GATEWAY" ]; then
-    pass "13 | CM-6 | Passerelle configurée : $GATEWAY"
+    pass "13 | CM-6 | Passerelle par défaut configurée : $GATEWAY"
 else
     fail "13 | CM-6 | Aucune passerelle par défaut"
 fi
 
 
-# 14 - AC-4 - Routes
-ROUTES="$(ip route show 2>/dev/null)"
+# 14 - AC-4 - Routage IP
+# Le serveur Nginx ne doit pas agir comme routeur.
+IP_FORWARD="$(sysctl -n net.ipv4.ip_forward 2>/dev/null)"
 
-if [ -n "$ROUTES" ]; then
-    manual "14 | AC-4 | Table de routage présente : validation nécessaire"
+if [ "$IP_FORWARD" = "0" ]; then
+    pass "14 | AC-4 | Routage IPv4 désactivé"
 else
-    fail "14 | AC-4 | Impossible de récupérer la table de routage"
+    fail "14 | AC-4 | net.ipv4.ip_forward=$IP_FORWARD (attendu : 0)"
 fi
 
 
 # 15 - SC-20 - DNS
-if [ -s /etc/resolv.conf ] && grep -qE '^[[:space:]]*nameserver[[:space:]]+' /etc/resolv.conf; then
-    pass "15 | SC-20 | Serveur DNS configuré"
+DNS_SERVERS="$(
+    awk '/^[[:space:]]*nameserver[[:space:]]+/ {print $2}' \
+    /etc/resolv.conf 2>/dev/null |
+    xargs
+)"
+
+if [ -n "$DNS_SERVERS" ]; then
+    pass "15 | SC-20 | DNS configuré : $DNS_SERVERS"
 else
-    fail "15 | SC-20 | Aucun serveur DNS détecté"
+    fail "15 | SC-20 | Aucun serveur DNS configuré"
 fi
 
 
-# 16 - CM-7 - Ports TCP en écoute
-LISTENING="$(ss -lnt 2>/dev/null | tail -n +2)"
-
-if [ -n "$LISTENING" ]; then
-    manual "16 | CM-7 | Ports TCP en écoute détectés : validation nécessaire"
+# 16 - CM-7 - Ports TCP autorisés
+if ! command -v ss >/dev/null 2>&1; then
+    fail "16 | CM-7 | Commande ss indisponible"
 else
-    fail "16 | CM-7 | Aucun port TCP détecté ou commande indisponible"
+    LISTENING_PORTS="$(
+        ss -H -lnt 2>/dev/null |
+        awk '{print $4}' |
+        sed -E 's/.*:([0-9]+)$/\1/' |
+        sort -nu
+    )"
+
+    UNAUTHORIZED=""
+
+    for port in $LISTENING_PORTS; do
+        case " $ALLOWED_TCP_PORTS " in
+            *" $port "*) ;;
+            *) UNAUTHORIZED="$UNAUTHORIZED $port" ;;
+        esac
+    done
+
+    if [ -z "$UNAUTHORIZED" ]; then
+        pass "16 | CM-7 | Aucun port TCP non autorisé détecté : $(echo "$LISTENING_PORTS" | xargs)"
+    else
+        fail "16 | CM-7 | Ports TCP non autorisés :$UNAUTHORIZED"
+    fi
 fi
 
 
-# 17 - SC-8 - HTTPS / 443
-if ss -lnt 2>/dev/null | awk '{print $4}' | grep -qE '(^|:|\])443$'; then
-    pass "17 | SC-8 | HTTPS écoute sur le port 443"
+# 17 - SC-8 - HTTPS
+if ss -H -lnt 2>/dev/null |
+   awk '{print $4}' |
+   grep -qE ":${HTTPS_PORT}$"; then
+
+    pass "17 | SC-8 | HTTPS écoute sur le port $HTTPS_PORT"
 else
-    fail "17 | SC-8 | Aucun service HTTPS détecté sur 443"
+    fail "17 | SC-8 | Aucun service en écoute sur HTTPS/$HTTPS_PORT"
 fi
 
 
-# 18 - SC-8 - HTTP / 80
-# La présence de HTTP nécessite de vérifier qu'il ne sert qu'à rediriger vers HTTPS.
-if ss -lnt 2>/dev/null | awk '{print $4}' | grep -qE '(^|:|\])80$'; then
-    manual "18 | SC-8 | Port 80 actif : vérifier la redirection HTTP vers HTTPS"
+# 18 - SC-8 - Redirection HTTP vers HTTPS
+if [ "$REQUIRE_HTTP_REDIRECT" = "yes" ]; then
+
+    if ! command -v nginx >/dev/null 2>&1; then
+        fail "18 | SC-8 | Nginx absent : redirection HTTP impossible à vérifier"
+
+    elif ! ss -H -lnt 2>/dev/null |
+         awk '{print $4}' |
+         grep -qE ":${HTTP_PORT}$"; then
+
+        fail "18 | SC-8 | Port HTTP/$HTTP_PORT non actif alors que la redirection est requise"
+
+    elif nginx -T 2>/dev/null |
+         grep -Eq 'return[[:space:]]+30(1|8)[[:space:]]+https://'; then
+
+        pass "18 | SC-8 | Redirection HTTP vers HTTPS configurée"
+
+    else
+        fail "18 | SC-8 | Redirection HTTP vers HTTPS non détectée"
+    fi
+
 else
-    pass "18 | SC-8 | Aucun service HTTP en clair sur le port 80"
+    pass "18 | SC-8 | Redirection HTTP non exigée par la baseline"
 fi
 
 
 # 19 - AC-4 - Pare-feu
-if command -v nft >/dev/null 2>&1; then
+if [ "$REQUIRE_FIREWALL" != "yes" ]; then
+    pass "19 | AC-4 | Pare-feu non exigé par la baseline"
+
+elif command -v nft >/dev/null 2>&1; then
+
     RULESET="$(nft list ruleset 2>/dev/null)"
 
-    if [ -n "$RULESET" ]; then
-        manual "19 | AC-4 | Pare-feu nftables présent : règles à valider"
+    if [ -n "$RULESET" ] &&
+       echo "$RULESET" | grep -qE 'hook[[:space:]]+input'; then
+        pass "19 | AC-4 | Pare-feu nftables actif"
     else
-        fail "19 | AC-4 | nftables présent mais aucune règle détectée"
+        fail "19 | AC-4 | nftables présent mais aucun filtrage INPUT détecté"
     fi
+
 elif command -v iptables >/dev/null 2>&1; then
-    manual "19 | AC-4 | iptables détecté : règles à valider"
+
+    IPTABLES_RULES="$(iptables -S INPUT 2>/dev/null)"
+
+    if [ -n "$IPTABLES_RULES" ]; then
+        pass "19 | AC-4 | Filtrage iptables INPUT détecté"
+    else
+        fail "19 | AC-4 | Aucun filtrage iptables INPUT détecté"
+    fi
+
 else
-    fail "19 | AC-4 | Aucun pare-feu nftables/iptables détecté"
+    fail "19 | AC-4 | Aucun pare-feu compatible détecté"
 fi
 
 
-# 20 - CM-6 - Adresses d'écoute Nginx
-if command -v nginx >/dev/null 2>&1; then
-    LISTEN="$(nginx -T 2>/dev/null | grep -E '^[[:space:]]*listen[[:space:]]')"
-
-    if [ -n "$LISTEN" ]; then
-        manual "20 | CM-6 | Directives listen Nginx détectées : $LISTEN"
-    else
-        fail "20 | CM-6 | Aucune directive listen Nginx détectée"
-    fi
+# 20 - CM-6 - Ports Nginx
+if ! command -v nginx >/dev/null 2>&1; then
+    fail "20 | CM-6 | Nginx absent"
 else
-    fail "20 | CM-6 | Nginx n'est pas installé"
+    NGINX_LISTEN_PORTS="$(
+        nginx -T 2>/dev/null |
+        awk '
+            /^[[:space:]]*listen[[:space:]]/ {
+                value=$2
+                gsub(";", "", value)
+                if (match(value, /[0-9]+$/)) {
+                    print substr(value, RSTART, RLENGTH)
+                }
+            }
+        ' |
+        sort -nu
+    )"
+
+    BAD_NGINX_PORTS=""
+
+    for port in $NGINX_LISTEN_PORTS; do
+        if [ "$port" != "$HTTP_PORT" ] &&
+           [ "$port" != "$HTTPS_PORT" ]; then
+            BAD_NGINX_PORTS="$BAD_NGINX_PORTS $port"
+        fi
+    done
+
+    if [ -z "$NGINX_LISTEN_PORTS" ]; then
+        fail "20 | CM-6 | Aucune directive listen Nginx détectée"
+    elif [ -n "$BAD_NGINX_PORTS" ]; then
+        fail "20 | CM-6 | Ports Nginx non autorisés :$BAD_NGINX_PORTS"
+    else
+        pass "20 | CM-6 | Ports Nginx conformes : $(echo "$NGINX_LISTEN_PORTS" | xargs)"
+    fi
 fi

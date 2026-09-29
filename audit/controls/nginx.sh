@@ -4,7 +4,10 @@ echo
 echo "========== NGINX / TLS / SERVICES =========="
 echo
 
-# 31 - CM-7 - État du service Nginx
+# ==========================================================
+# 31 - CM-7 - Service Nginx actif
+# ==========================================================
+
 if systemctl is-active --quiet nginx 2>/dev/null; then
     pass "31 | CM-7 | Service Nginx actif"
 else
@@ -12,7 +15,10 @@ else
 fi
 
 
-# 32 - CM-6 - Démarrage automatique
+# ==========================================================
+# 32 - CM-6 - Nginx activé au démarrage
+# ==========================================================
+
 if systemctl is-enabled --quiet nginx 2>/dev/null; then
     pass "32 | CM-6 | Nginx activé au démarrage"
 else
@@ -20,182 +26,266 @@ else
 fi
 
 
-# 33 - CM-6 - Validité de la configuration
-if command -v nginx >/dev/null 2>&1; then
+# ==========================================================
+# 33 - CM-6 - Validité configuration Nginx
+# ==========================================================
 
-    if nginx -t >/dev/null 2>&1; then
-        pass "33 | CM-6 | Configuration Nginx valide"
-    else
-        fail "33 | CM-6 | Configuration Nginx invalide"
-    fi
-
+if ! command -v nginx >/dev/null 2>&1; then
+    fail "33 | CM-6 | Nginx absent"
+elif nginx -t >/dev/null 2>&1; then
+    pass "33 | CM-6 | Configuration Nginx valide"
 else
-    fail "33 | CM-6 | Nginx non installé"
+    fail "33 | CM-6 | Configuration Nginx invalide"
 fi
 
 
-# 34 - SI-2 - Version de Nginx
-if command -v nginx >/dev/null 2>&1; then
+# ==========================================================
+# 34 - SI-2 - Mise à jour Nginx
+# ==========================================================
 
-    NGINX_VERSION="$(nginx -v 2>&1 | sed 's|nginx version: nginx/||')"
+if ! command -v dpkg-query >/dev/null 2>&1 ||
+   ! command -v apt >/dev/null 2>&1; then
 
-    if [ -n "$NGINX_VERSION" ]; then
-        manual "34 | SI-2 | Version Nginx : $NGINX_VERSION - support à vérifier"
-    else
-        fail "34 | SI-2 | Impossible de déterminer la version de Nginx"
-    fi
+    fail "34 | SI-2 | Gestionnaire APT/dpkg indisponible"
+
+elif ! dpkg-query -W nginx >/dev/null 2>&1; then
+
+    fail "34 | SI-2 | Paquet Nginx absent"
 
 else
-    fail "34 | SI-2 | Nginx non installé"
-fi
 
-
-# 35 - AC-6 - Utilisateur des workers Nginx
-if command -v nginx >/dev/null 2>&1; then
-
-    NGINX_USER="$(
-        nginx -T 2>/dev/null |
-        awk '$1 == "user" {
-            gsub(";", "", $2)
-            print $2
-            exit
-        }'
+    NGINX_UPDATE="$(
+        apt list --upgradable 2>/dev/null |
+        grep -E '^nginx(/|-)'
     )"
 
-    if [ "$NGINX_USER" = "www-data" ]; then
-        pass "35 | AC-6 | Workers Nginx exécutés avec www-data"
-    elif [ -n "$NGINX_USER" ]; then
-        manual "35 | AC-6 | Utilisateur Nginx détecté : $NGINX_USER"
+    if [ -z "$NGINX_UPDATE" ]; then
+        VERSION="$(dpkg-query -W -f='${Version}' nginx 2>/dev/null)"
+        pass "34 | SI-2 | Nginx à jour : $VERSION"
     else
-        fail "35 | AC-6 | Impossible de déterminer l'utilisateur Nginx"
+        fail "34 | SI-2 | Mise à jour Nginx disponible"
     fi
-
-else
-    fail "35 | AC-6 | Nginx non installé"
 fi
 
 
-# 36 - CIS 4.1.2 - Certificat TLS
-CERTIFICATE="$(
-    nginx -T 2>/dev/null |
-    awk '$1 == "ssl_certificate" {
-        gsub(";", "", $2)
-        print $2
-        exit
-    }'
-)"
+# ==========================================================
+# 35 - AC-6 - Utilisateur Nginx
+# ==========================================================
 
-if [ -n "$CERTIFICATE" ] && [ -f "$CERTIFICATE" ]; then
+if ! command -v nginx >/dev/null 2>&1; then
 
-    if openssl x509 -in "$CERTIFICATE" -noout >/dev/null 2>&1; then
-        manual "36 | CIS 4.1.2 | Certificat TLS valide syntaxiquement : $CERTIFICATE"
-    else
-        fail "36 | CIS 4.1.2 | Certificat TLS illisible ou invalide"
-    fi
+    fail "35 | AC-6 | Nginx absent"
 
 else
-    fail "36 | CIS 4.1.2 | Aucun certificat TLS Nginx détecté"
+
+    DETECTED_USER="$(
+        nginx -T 2>/dev/null |
+        awk '
+            $1 == "user" {
+                gsub(";", "", $2)
+                print $2
+                exit
+            }
+        '
+    )"
+
+    if [ "$DETECTED_USER" = "$NGINX_USER" ]; then
+        pass "35 | AC-6 | Utilisateur Nginx conforme : $DETECTED_USER"
+    else
+        fail "35 | AC-6 | Attendu : $NGINX_USER | Détecté : $DETECTED_USER"
+    fi
 fi
 
 
-# 37 - SC-12 - Validité temporelle du certificat
-if [ -n "$CERTIFICATE" ] && [ -f "$CERTIFICATE" ]; then
+# ==========================================================
+# 36 - TLS - Certificat présent et lisible
+# ==========================================================
 
-    # 0 seconde = vérification qu'il n'est pas déjà expiré.
-    if openssl x509 \
+CERTIFICATE=""
+
+if command -v nginx >/dev/null 2>&1; then
+    CERTIFICATE="$(
+        nginx -T 2>/dev/null |
+        awk '
+            $1 == "ssl_certificate" {
+                gsub(";", "", $2)
+                print $2
+                exit
+            }
+        '
+    )"
+fi
+
+if [ -z "$CERTIFICATE" ]; then
+
+    fail "36 | TLS | Aucun certificat Nginx détecté"
+
+elif [ ! -f "$CERTIFICATE" ]; then
+
+    fail "36 | TLS | Certificat absent : $CERTIFICATE"
+
+elif ! openssl x509 \
+     -in "$CERTIFICATE" \
+     -noout >/dev/null 2>&1; then
+
+    fail "36 | TLS | Certificat X.509 invalide"
+
+else
+    pass "36 | TLS | Certificat X.509 présent et lisible : $CERTIFICATE"
+fi
+
+
+# ==========================================================
+# 37 - SC-12 - Durée de validité du certificat
+# ==========================================================
+
+SECONDS_REQUIRED=$((CERT_MIN_DAYS * 86400))
+
+if [ -z "$CERTIFICATE" ] ||
+   [ ! -f "$CERTIFICATE" ]; then
+
+    fail "37 | SC-12 | Aucun certificat à vérifier"
+
+elif openssl x509 \
+     -in "$CERTIFICATE" \
+     -checkend "$SECONDS_REQUIRED" \
+     -noout >/dev/null 2>&1; then
+
+    EXPIRATION="$(
+        openssl x509 \
         -in "$CERTIFICATE" \
-        -checkend 0 \
-        -noout >/dev/null 2>&1; then
+        -noout \
+        -enddate 2>/dev/null |
+        cut -d= -f2-
+    )"
 
-        EXPIRATION="$(
-            openssl x509 \
-            -in "$CERTIFICATE" \
-            -noout \
-            -enddate 2>/dev/null |
-            cut -d= -f2-
-        )"
-
-        pass "37 | SC-12 | Certificat non expiré : $EXPIRATION"
-
-    else
-        fail "37 | SC-12 | Certificat TLS expiré"
-    fi
+    pass "37 | SC-12 | Certificat valide encore au moins ${CERT_MIN_DAYS} jours : $EXPIRATION"
 
 else
-    fail "37 | SC-12 | Aucun certificat à contrôler"
+    fail "37 | SC-12 | Certificat expiré ou expirant dans moins de ${CERT_MIN_DAYS} jours"
 fi
 
 
-# 38 - CIS 4.1.4 - Protocoles TLS
-TLS_PROTOCOLS="$(
-    nginx -T 2>/dev/null |
-    grep -E '^[[:space:]]*ssl_protocols[[:space:]]' |
-    head -n1
-)"
+# ==========================================================
+# 38 - TLS - Protocoles autorisés
+# ==========================================================
 
-if [ -z "$TLS_PROTOCOLS" ]; then
+if ! command -v nginx >/dev/null 2>&1; then
 
-    fail "38 | CIS 4.1.4 | ssl_protocols non défini explicitement"
-
-elif echo "$TLS_PROTOCOLS" |
-     grep -qE 'SSLv2|SSLv3|TLSv1([^.]|$)|TLSv1\.1'; then
-
-    fail "38 | CIS 4.1.4 | Protocole TLS obsolète autorisé : $TLS_PROTOCOLS"
-
-elif echo "$TLS_PROTOCOLS" |
-     grep -q 'TLSv1.2'; then
-
-    pass "38 | CIS 4.1.4 | Protocoles TLS modernes configurés : $TLS_PROTOCOLS"
+    fail "38 | TLS | Nginx absent"
 
 else
-    manual "38 | CIS 4.1.4 | Configuration TLS à valider : $TLS_PROTOCOLS"
-fi
 
+    TLS_LINE="$(
+        nginx -T 2>/dev/null |
+        awk '
+            $1 == "ssl_protocols" {
+                $1=""
+                gsub(";", "")
+                sub(/^[ \t]+/, "")
+                print
+                exit
+            }
+        '
+    )"
 
-# 39 - CIS 4.1.5 - Suites cryptographiques
-CIPHERS="$(
-    nginx -T 2>/dev/null |
-    grep -E '^[[:space:]]*ssl_ciphers[[:space:]]' |
-    head -n1
-)"
-
-if [ -n "$CIPHERS" ]; then
-
-    # On peut détecter quelques familles faibles automatiquement,
-    # mais une validation complète sera faite avec testssl.sh.
-    if echo "$CIPHERS" |
-       grep -qiE 'RC4|3DES|DES|NULL|EXPORT|MD5'; then
-
-        fail "39 | CIS 4.1.5 | Suite cryptographique faible détectée"
-
-    else
-        manual "39 | CIS 4.1.5 | Ciphers configurés - validation testssl.sh requise"
-    fi
-
-else
-    manual "39 | CIS 4.1.5 | ssl_ciphers non défini - validation testssl.sh requise"
-fi
-
-
-# 40 - CM-7 - Services inutiles
-if command -v systemctl >/dev/null 2>&1; then
-
-    SERVICES="$(
-        systemctl list-units \
-        --type=service \
-        --state=running \
-        --no-legend \
-        --no-pager 2>/dev/null |
-        awk '{print $1}' |
+    DETECTED_TLS="$(
+        echo "$TLS_LINE" |
+        tr ' ' '\n' |
+        sed '/^$/d' |
+        sort |
         xargs
     )"
 
-    if [ -n "$SERVICES" ]; then
-        manual "40 | CM-7 | Services actifs détectés : nécessité à valider"
+    EXPECTED_TLS="$(
+        echo "$TLS_ALLOWED_PROTOCOLS" |
+        tr ' ' '\n' |
+        sort |
+        xargs
+    )"
+
+    if [ -n "$DETECTED_TLS" ] &&
+       [ "$DETECTED_TLS" = "$EXPECTED_TLS" ]; then
+
+        pass "38 | TLS | Protocoles conformes : $DETECTED_TLS"
     else
-        fail "40 | CM-7 | Impossible d'inventorier les services actifs"
+        fail "38 | TLS | Attendu : $EXPECTED_TLS | Détecté : $DETECTED_TLS"
     fi
+fi
+
+
+# ==========================================================
+# 39 - TLS - Chiffrements faibles
+# ==========================================================
+
+if ! command -v nginx >/dev/null 2>&1; then
+
+    fail "39 | TLS | Nginx absent"
 
 else
+
+    CIPHER_LINE="$(
+        nginx -T 2>/dev/null |
+        awk '
+            $1 == "ssl_ciphers" {
+                $1=""
+                gsub(";", "")
+                sub(/^[ \t]+/, "")
+                print
+                exit
+            }
+        '
+    )"
+
+    if [ -z "$CIPHER_LINE" ]; then
+
+        fail "39 | TLS | ssl_ciphers non défini explicitement"
+
+    else
+
+        WEAK=""
+
+        for cipher in $FORBIDDEN_CIPHERS; do
+            if echo "$CIPHER_LINE" |
+               grep -qi "$cipher"; then
+                WEAK="$WEAK $cipher"
+            fi
+        done
+
+        if [ -z "$WEAK" ]; then
+            pass "39 | TLS | Aucun chiffrement explicitement interdit détecté"
+        else
+            fail "39 | TLS | Chiffrements interdits détectés :$WEAK"
+        fi
+    fi
+fi
+
+
+# ==========================================================
+# 40 - CM-7 - Services interdits
+# ==========================================================
+
+if ! command -v systemctl >/dev/null 2>&1; then
+
     fail "40 | CM-7 | systemctl indisponible"
+
+else
+
+    BAD_SERVICES=""
+
+    for service in $FORBIDDEN_SERVICES; do
+
+        if systemctl is-active \
+           --quiet "$service" 2>/dev/null; then
+
+            BAD_SERVICES="$BAD_SERVICES $service"
+        fi
+
+    done
+
+    if [ -z "$BAD_SERVICES" ]; then
+        pass "40 | CM-7 | Aucun service explicitement interdit actif"
+    else
+        fail "40 | CM-7 | Services interdits actifs :$BAD_SERVICES"
+    fi
 fi

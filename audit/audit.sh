@@ -1,8 +1,15 @@
 #!/bin/bash
 
-# Point d'entrée de l'audit Debian 13 / Nginx
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+BASELINE_FILE="$PROJECT_DIR/config/baseline.conf"
+
+if [ ! -f "$BASELINE_FILE" ]; then
+    echo "[ERROR] Baseline introuvable : $BASELINE_FILE"
+    exit 1
+fi
+
+source "$BASELINE_FILE"
 
 PASS=0
 FAIL=0
