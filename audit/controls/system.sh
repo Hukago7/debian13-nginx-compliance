@@ -234,4 +234,3 @@ else
         fail "10 | IA-5 | Politique d'expiration non conforme : max=$PASS_MAX_DAYS min=$PASS_MIN_DAYS avertissement=$PASS_WARN_AGE"
     fi
 fi
-EOF
