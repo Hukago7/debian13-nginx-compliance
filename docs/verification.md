@@ -16,55 +16,55 @@ contrôles nécessitant une validation humaine.
 
 | ID | Référence | Méthode | Outil principal |
 |---:|---|---|---|
-| 01 | CM-8 | Automatique | Script maison |
-| 02 | SI-2 | Automatique | Script maison / Lynis |
-| 03 | CM-8 | Automatique | Script maison |
-| 04 | CM-8 | Automatique | Script maison |
-| 05 | CM-6 | Semi-automatique | Lynis / Script maison |
-| 06 | SI-7 | Automatique | Script maison |
-| 07 | CM-7 | Semi-automatique | Lynis / Script maison |
-| 08 | AC-6 | Automatique | Lynis / Script maison |
-| 09 | AC-6 | Semi-automatique | Lynis / Script maison |
+| 01 | CM-8 | Automatique | Script homemade |
+| 02 | SI-2 | Automatique | Script homemade / Lynis |
+| 03 | CM-8 | Automatique | Script homemade |
+| 04 | CM-8 | Automatique | Script homemade |
+| 05 | CM-6 | Semi-automatique | Lynis / Script homemade |
+| 06 | SI-7 | Automatique | Script homemade |
+| 07 | CM-7 | Semi-automatique | Lynis / Script homemade |
+| 08 | AC-6 | Automatique | Lynis / Script homemade |
+| 09 | AC-6 | Semi-automatique | Lynis / Script homemade |
 | 10 | IA-5 | Semi-automatique | Lynis / Contrôle manuel |
-| 11 | CM-8 | Semi-automatique | Script maison |
-| 12 | CM-8 | Semi-automatique | Script maison |
-| 13 | CM-6 | Automatique | Script maison |
-| 14 | AC-4 | Semi-automatique | Script maison |
-| 15 | SC-20 | Automatique | Script maison |
-| 16 | CM-7 | Semi-automatique | Lynis / Script maison |
-| 17 | SC-8 | Automatique | Script maison |
-| 18 | SC-8 | Semi-automatique | Script maison |
-| 19 | AC-4 | Semi-automatique | Lynis / Script maison |
-| 20 | CM-6 | Semi-automatique | Script maison |
-| 21 | CM-6 | Semi-automatique | Lynis / Script maison |
-| 22 | CM-7 | Semi-automatique | Lynis / Script maison |
-| 23 | CM-6 | Semi-automatique | Lynis / Script maison |
-| 24 | AU-4 | Automatique | Script maison |
-| 25 | AU-4 | Automatique | Script maison |
-| 26 | AC-6 | Automatique | Lynis / Script maison |
-| 27 | AC-6 | Automatique | Script maison |
-| 28 | SC-12 | Automatique | Script maison |
-| 29 | AC-6 | Semi-automatique | Script maison |
-| 30 | CM-6 | Automatique | Script maison |
-| 31 | CM-7 | Automatique | Script maison |
-| 32 | CM-6 | Automatique | Script maison |
-| 33 | CM-6 | Automatique | Script maison |
-| 34 | SI-2 | Semi-automatique | Script maison / Trivy |
-| 35 | AC-6 | Semi-automatique | Script maison |
+| 11 | CM-8 | Semi-automatique | Script homemade |
+| 12 | CM-8 | Semi-automatique | Script homemade |
+| 13 | CM-6 | Automatique | Script homemade |
+| 14 | AC-4 | Semi-automatique | Script homemade |
+| 15 | SC-20 | Automatique | Script homemade |
+| 16 | CM-7 | Semi-automatique | Lynis / Script homemade |
+| 17 | SC-8 | Automatique | Script homemade |
+| 18 | SC-8 | Semi-automatique | Script homemade |
+| 19 | AC-4 | Semi-automatique | Lynis / Script homemade |
+| 20 | CM-6 | Semi-automatique | Script homemade |
+| 21 | CM-6 | Semi-automatique | Lynis / Script homemade |
+| 22 | CM-7 | Semi-automatique | Lynis / Script homemade |
+| 23 | CM-6 | Semi-automatique | Lynis / Script homemade |
+| 24 | AU-4 | Automatique | Script homemade |
+| 25 | AU-4 | Automatique | Script homemade |
+| 26 | AC-6 | Automatique | Lynis / Script homemade |
+| 27 | AC-6 | Automatique | Script homemade |
+| 28 | SC-12 | Automatique | Script homemade |
+| 29 | AC-6 | Semi-automatique | Script homemade |
+| 30 | CM-6 | Automatique | Script homemade |
+| 31 | CM-7 | Automatique | Script homemade |
+| 32 | CM-6 | Automatique | Script homemade |
+| 33 | CM-6 | Automatique | Script homemade |
+| 34 | SI-2 | Semi-automatique | Script homemade / Trivy |
+| 35 | AC-6 | Semi-automatique | Script homemade |
 | 36 | CIS 4.1.2 | Semi-automatique | OpenSSL / testssl.sh |
 | 37 | SC-12 | Automatique | OpenSSL / testssl.sh |
 | 38 | CIS 4.1.4 | Automatique | testssl.sh |
 | 39 | CIS 4.1.5 | Automatique | testssl.sh |
 | 40 | CM-7 | Non automatisé | Lynis + contrôle manuel |
-| 41 | CM-10 | Semi-automatique | Script maison |
-| 42 | SI-2 | Automatique | Script maison / Trivy |
-| 43 | SI-2 | Automatique | Script maison / Trivy |
-| 44 | CM-7 | Non automatisé | Script maison + contrôle manuel |
-| 45 | SI-2 | Automatique | Trivy / Script maison |
-| 46 | CM-10 | Non automatisé | Script maison + contrôle manuel |
-| 47 | CM-6 | Semi-automatique | Script maison |
+| 41 | CM-10 | Semi-automatique | Script homemade |
+| 42 | SI-2 | Automatique | Script homemade / Trivy |
+| 43 | SI-2 | Automatique | Script homemade / Trivy |
+| 44 | CM-7 | Non automatisé | Script homemade + contrôle manuel |
+| 45 | SI-2 | Automatique | Trivy / Script homemade |
+| 46 | CM-10 | Non automatisé | Script homemade + contrôle manuel |
+| 47 | CM-6 | Semi-automatique | Script homemade |
 | 48 | CM-7 | Non automatisé | Lynis + contrôle manuel |
-| 49 | SI-2 | Automatique | Script maison |
+| 49 | SI-2 | Automatique | Script homemade |
 | 50 | SA-22 | Non automatisé | Trivy + contrôle manuel |
 
 ## Contrôles nécessitant une intervention humaine
