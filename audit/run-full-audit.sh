@@ -37,7 +37,7 @@ echo "========== 1/4 - AUDIT CUSTOM =========="
 
 "$SCRIPT_DIR/audit.sh" \
     2>&1 |
-    tee "$REPORT_DIR/custom-$TIMESTAMP.txt"
+    tee "$CUSTOM_REPORT"
 
 CUSTOM_EXIT=${PIPESTATUS[0]}
 
@@ -56,7 +56,7 @@ if command -v lynis >/dev/null 2>&1; then
         --quick \
         --no-colors \
         2>&1 |
-        tee "$REPORT_DIR/lynis-$TIMESTAMP.txt"
+        tee "$LYNIS_REPORT"
 
     LYNIS_EXIT=${PIPESTATUS[0]}
 
@@ -83,7 +83,7 @@ if command -v trivy >/dev/null 2>&1; then
         --no-progress \
         / \
         2>&1 |
-        tee "$REPORT_DIR/trivy-$TIMESTAMP.txt"
+        tee "$TRIVY_REPORT"
 
     TRIVY_EXIT=${PIPESTATUS[0]}
 
@@ -116,7 +116,7 @@ if [ -n "$TESTSSL" ]; then
         --warnings batch \
         https://127.0.0.1:443 \
         2>&1 |
-        tee "$REPORT_DIR/testssl-$TIMESTAMP.txt"
+        tee "$TESTSSL_REPORT"
 
     TESTSSL_EXIT=${PIPESTATUS[0]}
 
