@@ -176,31 +176,25 @@ if ! command -v nginx >/dev/null 2>&1; then
 
 else
 
-    TLS_LINE="$(
+    DETECTED_TLS="$(
         nginx -T 2>/dev/null |
+        sed 's/#.*//' |
         awk '
             $1 == "ssl_protocols" {
-                $1=""
-                gsub(";", "")
-                sub(/^[ \t]+/, "")
-                print
-                exit
+                for (i=2; i<=NF; i++) {
+                    gsub(/;/, "", $i)
+                    print $i
+                }
             }
-        '
-    )"
-
-    DETECTED_TLS="$(
-        echo "$TLS_LINE" |
-        tr ' ' '\n' |
-        sed '/^$/d' |
-        sort |
+        ' |
+        sort -u |
         xargs
     )"
 
     EXPECTED_TLS="$(
         echo "$TLS_ALLOWED_PROTOCOLS" |
         tr ' ' '\n' |
-        sort |
+        sort -u |
         xargs
     )"
 
@@ -224,38 +218,38 @@ if ! command -v nginx >/dev/null 2>&1; then
 
 else
 
-    CIPHER_LINE="$(
+    CIPHER_CONFIG="$(
         nginx -T 2>/dev/null |
+        sed 's/#.*//' |
         awk '
             $1 == "ssl_ciphers" {
-                $1=""
-                gsub(";", "")
-                sub(/^[ \t]+/, "")
-                print
-                exit
+                gsub(/;/, "", $2)
+                print $2
             }
-        '
+        ' |
+        tail -1
     )"
 
-    if [ -z "$CIPHER_LINE" ]; then
+    if [ -z "$CIPHER_CONFIG" ]; then
 
         fail "39 | TLS | ssl_ciphers non défini explicitement"
 
     else
 
-        WEAK=""
+        MISSING_EXCLUSIONS=""
 
         for cipher in $FORBIDDEN_CIPHERS; do
-            if echo "$CIPHER_LINE" |
-               grep -qi "$cipher"; then
-                WEAK="$WEAK $cipher"
+            if ! echo ":$CIPHER_CONFIG:" |
+                 grep -Fqi ":!$cipher:"; then
+
+                MISSING_EXCLUSIONS="$MISSING_EXCLUSIONS $cipher"
             fi
         done
 
-        if [ -z "$WEAK" ]; then
-            pass "39 | TLS | Aucun chiffrement explicitement interdit détecté"
+        if [ -z "$MISSING_EXCLUSIONS" ]; then
+            pass "39 | TLS | Chiffrements faibles explicitement exclus"
         else
-            fail "39 | TLS | Chiffrements interdits détectés :$WEAK"
+            fail "39 | TLS | Chiffrements interdits non explicitement exclus :$MISSING_EXCLUSIONS"
         fi
     fi
 fi
