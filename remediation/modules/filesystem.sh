@@ -166,11 +166,32 @@ fi
 # ==========================================================
 
 for fs in $FORBIDDEN_FILESYSTEMS; do
-
-    if findmnt -t "$fs" >/dev/null 2>&1; then
+    if findmnt -rn -t "$fs" -o TARGET | grep -q .; then
         error "Filesystem interdit actuellement monté : $fs"
     else
         ok "Filesystem $fs non monté"
     fi
-
 done
+
+ensure_tmpfs_options() {
+    TARGET="$1"
+
+    if mountpoint -q "$TARGET"; then
+        CURRENT="$(findmnt -n -o OPTIONS "$TARGET")"
+
+        if echo "$CURRENT" | tr ',' '\n' | grep -qx "noexec"; then
+            ok "$TARGET possède déjà noexec"
+        else
+            if mount -o remount,noexec "$TARGET"; then
+                changed "Ajout de noexec sur $TARGET"
+            else
+                error "Impossible d'ajouter noexec sur $TARGET"
+            fi
+        fi
+    else
+        error "$TARGET n'est pas un point de montage"
+    fi
+}
+
+ensure_tmpfs_options "/tmp"
+ensure_tmpfs_options "/dev/shm"
