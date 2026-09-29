@@ -10,6 +10,17 @@ TIMESTAMP="$(date '+%Y%m%d-%H%M%S')"
 
 mkdir -p "$REPORT_DIR"
 
+RUN_DIR="$REPORT_DIR/history/$TIMESTAMP"
+LATEST_DIR="$REPORT_DIR/latest"
+
+mkdir -p "$RUN_DIR"
+mkdir -p "$LATEST_DIR"
+
+CUSTOM_REPORT="$RUN_DIR/custom.txt"
+LYNIS_REPORT="$RUN_DIR/lynis.txt"
+TRIVY_REPORT="$RUN_DIR/trivy.txt"
+TESTSSL_REPORT="$RUN_DIR/testssl.txt"
+
 echo "=================================================="
 echo " AUDIT COMPLET DEBIAN 13 / NGINX"
 echo "=================================================="
@@ -131,6 +142,21 @@ echo
 echo "Rapports enregistrés dans :"
 echo "$REPORT_DIR"
 echo "=================================================="
+
+echo
+echo "========== GENERATION DU RAPPORT =========="
+
+cp "$CUSTOM_REPORT" "$LATEST_DIR/custom.txt"
+
+[ -f "$LYNIS_REPORT" ] && cp "$LYNIS_REPORT" "$LATEST_DIR/lynis.txt"
+[ -f "$TRIVY_REPORT" ] && cp "$TRIVY_REPORT" "$LATEST_DIR/trivy.txt"
+[ -f "$TESTSSL_REPORT" ] && cp "$TESTSSL_REPORT" "$LATEST_DIR/testssl.txt"
+
+"$SCRIPT_DIR/report/generate-report.sh" \
+    "$LATEST_DIR/custom.txt" \
+    "$LATEST_DIR/lynis.txt" \
+    "$LATEST_DIR/trivy.txt" \
+    "$LATEST_DIR/testssl.txt"
 
 # Le résultat de conformité officiel reste celui des 50 contrôles.
 exit "$CUSTOM_EXIT"
