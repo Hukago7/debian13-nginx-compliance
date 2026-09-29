@@ -184,11 +184,10 @@ BAD_SERVICE_ACCOUNTS="$(
     awk -F: '
         $3 < 1000 &&
         $1 != "root" &&
-        $7 !~ /(nologin|false)$/ {
+        $7 ~ /(bash|sh|dash|zsh|ksh)$/ {
             print $1
         }
-    ' /etc/passwd |
-    xargs
+    ' /etc/passwd
 )"
 
 if [ -z "$BAD_SERVICE_ACCOUNTS" ]; then
