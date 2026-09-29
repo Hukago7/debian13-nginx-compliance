@@ -136,7 +136,7 @@ server {
     ssl_certificate_key ${TLS_KEY_FILE};
 
     ssl_protocols ${TLS_ALLOWED_PROTOCOLS};
-    ssl_ciphers HIGH:!aNULL:!MD5:!3DES:!RC4;
+    ssl_ciphers HIGH:!aNULL:!eNULL:!MD5:!RC4:!3DES:!DES:!EXPORT:!NULL;
 
     root ${WEB_ROOT};
     index index.html;
